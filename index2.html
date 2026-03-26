@@ -50,50 +50,30 @@
         const connectBtn = document.getElementById("grant-usb-access");
         const webAppUrl = "https://script.google.com/macros/s/AKfycbwwfh1OxLKenHxvnIpRwl9zl4OpkUvpafUqnIMKo7FUM4JOENbyORCMmd139L0AioTA/exec";
 
-        // Global connection variable
         let conn = null;
-
-        function sendDataToSheets(lux) {
-            fetch(`${webAppUrl}?lux=${lux}`, {
-                method: 'GET',
-                mode: 'no-cors'
-            })
-            .then(() => console.log("Success: Sent " + lux + " to Sheets"))
-            .catch(err => console.error("Sheet Error:", err));
-        }
-
-        async function onIlluminanceChange(illuminance) {
-            illuminanceLabel.textContent = illuminance.toFixed(2) + ' lx';
-            if (logCheckbox.checked) {
-                sendDataToSheets(illuminance.toFixed(2));
-            }
-        }
 
         connectBtn.onclick = async () => {
             try {
-                // FIX: If a connection object already exists, don't create a new one!
-                if (!conn) {
-                    conn = new phidget22.USBConnection();
-                }
-
+                // Always start with a fresh connection object to avoid "Only one active" error
+                conn = new phidget22.USBConnection();
+                
                 connectBtn.disabled = true;
-                connectBtn.textContent = "Selecting Device...";
+                connectBtn.textContent = "Check Address Bar...";
 
-                // 1. Request access (The Popup)
+                // FORCE: No filters. This forces Chrome to show EVERYTHING it sees.
+                // If this doesn't show a popup, the Chromebook is physically blocking the Web API.
                 await conn.requestWebUSBDeviceAccess();
                 
-                connectBtn.textContent = "Connecting...";
-                
-                // 2. Connect the library
                 await conn.connect();
-
-                // 3. Small pause for stability
-                await new Promise(res => setTimeout(res, 500));
-
+                
                 const lightSensor = new phidget22.LightSensor();
-                lightSensor.onIlluminanceChange = onIlluminanceChange;
+                lightSensor.onIlluminanceChange = (lux) => {
+                    illuminanceLabel.textContent = lux.toFixed(2) + ' lx';
+                    if (logCheckbox.checked) {
+                        fetch(`${webAppUrl}?lux=${lux.toFixed(2)}`, { mode: 'no-cors' });
+                    }
+                };
 
-                // 4. Open the sensor
                 await lightSensor.open(5000);
                 lightSensor.setDataInterval(1000);
 
@@ -105,10 +85,9 @@
                 connectBtn.textContent = "1. Connect USB Device";
                 console.error("Phidget Connection Error:", err);
                 
-                // If it says 'Only one connection active', we need to reset the variable
-                if (err.message.includes("Only one")) {
-                    alert("The browser is confused. Please REFRESH the page and try again.");
-                    conn = null; 
+                // Specific Chromebook Help
+                if (err.message.includes("Not connected")) {
+                    alert("Chromebook Error: The system blocked the popup. \n1. Unplug the Phidget.\n2. Close ALL other tabs.\n3. Plug it back in and try again.");
                 } else {
                     alert("Error: " + err.message);
                 }
