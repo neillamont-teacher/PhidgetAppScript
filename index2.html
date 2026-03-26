@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Phidget Light Sensor to Google Sheets</title>
+    <script src="https://unpkg.com/phidget22@3.x/browser/phidget22.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        .status-box { border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #f9f9f9; }
+        #sensorLabel { font-size: 24px; font-weight: bold; color: #2c3e50; }
+        button { padding: 10px 15px; cursor: pointer; margin-bottom: 10px; }
+        .log-section { margin-top: 20px; padding: 10px; border-left: 4px solid #27ae60; }
+    </style>
+</head>
+<body>
+
+    <h2>Phidget Light Logger</h2>
+
+    <div class="status-box">
+        <button id="grant-usb-access">1. Connect USB Device</button><br>
+        
+        <label>Current Light Level: </label>
+        <span id="sensorLabel">Waiting for data...</span>
+    </div>
+
+    <div class="log-section">
+        <input type="checkbox" id="logCheckbox">
+        <label for="logCheckbox"><strong>Enable Logging to Google Sheets</strong></label>
+        <p><small>Data is sent to your sheet every 1 second when checked.</small></p>
+    </div>
+
+    <button onclick="window.open('https://www.phidgets.com/controlpanel/', '_blank')">
+        Open Phidget Control Panel
+    </button>
+
+    <script>
+    (async function () {
+        const illuminanceChangeDataEl = document.getElementById("sensorLabel");
+        const checkbox = document.getElementById("logCheckbox");
+        const webAppUrl = "https://script.google.com/macros/s/AKfycbwwfh1OxLKenHxvnIpRwl9zl4OpkUvpafUqnIMKo7FUM4JOENbyORCMmd139L0AioTA/exec";
+
+        // Initialize connection object once
+        const conn = new phidget22.USBConnection();
+
+        function sendDataToSheets(illuminance) {
+            fetch(`${webAppUrl}?lux=${illuminance}`, {
+                method: 'GET',
+                mode: 'no-cors'
+            })
+            .then(() => console.log("Sent to Sheets: " + illuminance))
+            .catch(err => console.error("Sheets Error:", err));
+        }
+
+        async function onLightSensor0_IlluminanceChange(illuminance) {
+            illuminanceChangeDataEl.textContent = illuminance.toFixed(2) + ' lx';
+            if (checkbox.checked) {
+                sendDataToSheets(illuminance);
+            }
+        }
+
+        document.getElementById('grant-usb-access').onclick = async () => {
+            const btn = document.getElementById('grant-usb-access');
+            try {
+                btn.disabled = true;
+                btn.textContent = "Connecting...";
+
+                // 1. Request access (Popup)
+                await conn.requestWebUSBDeviceAccess();
+                
+                // 2. Small delay to allow ChromeOS to mount the device
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // 3. Connect the bridge
+                await conn.connect();
+
+                // 4. Open the specific sensor
+                const lightSensor0 = new phidget22.LightSensor();
+                lightSensor0.onIlluminanceChange = onLightSensor0_IlluminanceChange;
+                
+                // Use a longer timeout for the hardware handshake
+                await lightSensor0.open(5000);
+                lightSensor0.setDataInterval(1000);
+
+                btn.textContent = "Phidget Connected!";
+                btn.style.backgroundColor = "#d4edda";
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = "1. Connect USB Device";
+                console.error("Connection failed:", err);
+                // Friendly error for students/users
+                alert("Connection Failed. Did you select the device in the popup and click 'Connect'?");
+            }
+        };
+    })();
+</script>
+</body>
+</html>
