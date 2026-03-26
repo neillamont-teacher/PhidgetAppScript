@@ -50,6 +50,9 @@
         const connectBtn = document.getElementById("grant-usb-access");
         const webAppUrl = "https://script.google.com/macros/s/AKfycbwwfh1OxLKenHxvnIpRwl9zl4OpkUvpafUqnIMKo7FUM4JOENbyORCMmd139L0AioTA/exec";
 
+        // Global connection variable
+        let conn = null;
+
         function sendDataToSheets(lux) {
             fetch(`${webAppUrl}?lux=${lux}`, {
                 method: 'GET',
@@ -67,22 +70,24 @@
         }
 
         connectBtn.onclick = async () => {
-            // Create a fresh connection object ON CLICK
-            const conn = new phidget22.USBConnection();
-
             try {
+                // FIX: If a connection object already exists, don't create a new one!
+                if (!conn) {
+                    conn = new phidget22.USBConnection();
+                }
+
                 connectBtn.disabled = true;
                 connectBtn.textContent = "Selecting Device...";
 
-                // 1. Request access. 0x06c2 is the Phidget Vendor ID.
-                await conn.requestWebUSBDeviceAccess({ filters: [{ vendorId: 0x06c2 }] });
+                // 1. Request access (The Popup)
+                await conn.requestWebUSBDeviceAccess();
                 
-                connectBtn.textContent = "Connecting Bridge...";
+                connectBtn.textContent = "Connecting...";
                 
-                // 2. Connect the library to the USB interface
+                // 2. Connect the library
                 await conn.connect();
 
-                // 3. Small pause for ChromeOS to stabilize the data stream
+                // 3. Small pause for stability
                 await new Promise(res => setTimeout(res, 500));
 
                 const lightSensor = new phidget22.LightSensor();
@@ -94,15 +99,19 @@
 
                 connectBtn.textContent = "Connected!";
                 connectBtn.style.backgroundColor = "#27ae60";
-                console.log("Phidget successfully connected.");
 
             } catch (err) {
                 connectBtn.disabled = false;
                 connectBtn.textContent = "1. Connect USB Device";
                 console.error("Phidget Connection Error:", err);
                 
-                // If it fails here, it's usually because another tab is still 'holding' the device
-                alert("Connection failed! Error: " + err.message + "\n\nTip: Close all other Phidget tabs and unplug/replug the sensor.");
+                // If it says 'Only one connection active', we need to reset the variable
+                if (err.message.includes("Only one")) {
+                    alert("The browser is confused. Please REFRESH the page and try again.");
+                    conn = null; 
+                } else {
+                    alert("Error: " + err.message);
+                }
             }
         };
     })();
